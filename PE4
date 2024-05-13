@@ -1,0 +1,232 @@
+clc, clear variables
+
+% input initial data for simulation
+N = 1e4;                %number of QAM-16 symbols
+h_avg = [1 0.25 0.25]   %avg values of channel impulse response
+h_dev = h_avg/4;        %deviation level of the channel impulse repsonse
+K = 5;                  %rician channel ratio direct/reflected
+Ndwn  = ceil(N/2e4);              % Downsampling plots
+SNR = 0:0.5:20;
+
+%-------------------------------------------------------------------------------------
+%Task 1. QAM 16 signal
+%---------------------------------------------------------------------------------------
+% Specify QAM 16 constellation map as a vector column
+QAM16map = [-1-1i; -1-3i;-1+1i;-1+3i; -3-1i; -3-3i; -3+1i; -3+3i; +1-1i; +1-3i; +1+1i; +1+3i; +3-1i; +3-3i; +3+1i; +3+3i];
+
+symDt = randi(16, 1, N);      %indices of the qam16 symbols isgnals
+
+% QAM 16 direct line of sight signal
+sLos = QAM16map(symDt).' ;
+dtRe = real(sLos);
+dtIm = imag(sLos);
+
+% Read binary data(payload) from symbols
+binDt = (dec2bin(symDt-1) == '1')';
+binDt = binDt(:)';
+
+%-------------------------------------------------------------------------------------
+%Task 2. Rayleigh fading channel model
+%Simulate channel impulse response for each symbols
+%---------------------------------------------------------------------------------------
+% T = 0 IR component simulation
+h0Re=randn(1,N)*h_dev(1)+h_avg(1);
+h0Im=randn(1,N)*h_dev(1)+h_avg(1);
+
+% T = 1 IR component simulation
+h1Re=randn(1,N)*h_dev(2)+h_avg(2);
+h1Im=randn(1,N)*h_dev(2)+h_avg(2);
+
+% T = 2 IR component simulation
+h2Re=randn(1,N)*h_dev(3)+h_avg(3);
+h2Im=randn(1,N)*h_dev(3)+h_avg(3);
+
+%for i=1:N
+%  stem([0 1 2],[h0Re(i) h1Re(i) h2Re(i)],'r','linewidth',2);grid on
+%  ylim([-1 1.5]);
+%  pause(0.1);
+% end
+
+%Simulate path signals
+s0 = h0Re .* dtRe + 1i*h0Im .* dtIm;
+s1 = h1Re .* [0 dtRe(1:end-1)] + 1i*h1Im.*[0 dtIm(1:end-1)];
+s2 = h2Re .* [0 0 dtRe(1:end-2)] + 1i*h2Im.*[0 0 dtIm(1:end-2)];
+
+% Add together the received signal
+sRxRay = s0 + s1+ s2;
+
+% Display plot of received QAM-16 signal in Rayleigh channel
+figure(1), subplot(1,3,1)
+idx  = 1:Ndwn:N;              % Limit of the display points
+plot(real(sRxRay(idx)), imag(sRxRay(idx)),'b.', real(QAM16map), imag(QAM16map),'rx','linewidth',2);
+axis square; xlabel('Real part');ylabel('Imag part'); grid on;
+title('Rayleigh channel simulation');
+xlim([-8 8]); ylim([-8 8]);
+
+%--------------------------------------------------------------------------------------------
+% Task 3.
+%-------------------------------------------------------------------------------------------------
+%Transmit data in Rician channel
+%Add together to get the received signal
+K=2;
+sRxRicK2 = sqrt(K/(K+1))*s0+sqrt(1/(K+1))*(s1+s2);
+
+
+% Display plot of received QAM-16 signal in Rician channel
+figure(1),subplot(1,3,2)
+idx  = 1:Ndwn:N;              % Limit of the display points
+plot(real(sRxRicK2(idx)), imag(sRxRicK2(idx)),'b.', real(QAM16map), imag(QAM16map),'rx','linewidth',2);
+axis square; xlabel('Real part');ylabel('Imag part'); grid on;
+titleStr = sprintf('Rician channel simulation, K = %d', K);
+title(titleStr);
+xlim([-8 8]); ylim([-8 8]);
+
+K=5;
+sRxRicK5 = sqrt(K/(K+1))*s0+sqrt(1/(K+1))*(s1+s2);
+% Display plot of received QAM-16 signal in Rician channel
+figure(1),subplot(1,3,3)
+idx  = 1:Ndwn:N;              % Limit of the display points
+plot(real(sRxRicK5(idx)), imag(sRxRicK5(idx)),'b.', real(QAM16map), imag(QAM16map),'rx','linewidth',2);
+axis square; xlabel('Real part');ylabel('Imag part'); grid on;
+titleStr = sprintf('Rician channel simulation, K = %d', K);
+title(titleStr);
+xlim([-8 8]); ylim([-8 8]);
+
+
+% Evaluate the awg power of channel signals
+PsLos = mean(abs(sLos).^2);
+PsRay = mean(abs(sRxRay).^2);
+PsRicK2 = mean(abs(sRxRicK2).^2);
+PsRicK5 = mean(abs(sRxRicK5).^2);
+
+
+
+%----------------------------------------------------------------------------------------------------
+%PE4-start
+%--------------------------------------------------------------------------------------------------------------
+figure(2)
+%%------------Demodulate LOS signal(no fading)------------------
+
+for k = 1:length(SNR)
+    clc, fprintf('Processing Los signal %.1f dB... \n', SNR(k));
+    BERLOS(k) = chansim(sLos, QAM16map, SNR(k), PsLos, binDt);
+end
+
+semilogy(SNR,BERLOS,'k','linewidth',2);
+
+%%----------Demodulate Rayleigh signal(w fading)------------------
+for k = 1:length(SNR)
+    clc, fprintf('Processing Rayleigh signal %.1f dB... \n', SNR(k));
+    % evaluate noise spectral power density
+    %PsLos = mean(abs(sLos).^2);
+    BERRAY(k) = chansim(sRxRay, QAM16map, SNR(k), PsRay, binDt);
+end
+
+hold on;semilogy(SNR,BERRAY,'b','linewidth',2);hold off; %BER for Rayleigh signal
+
+
+%%----------Demodulate Rician signal(w fading,K2)------------------
+for k = 1:length(SNR)
+    clc, fprintf('Processing Rician K2 signal %.1f dB... \n', SNR(k));
+    % evaluate noise spectral power density
+    %PsLos = mean(abs(sLos).^2);
+    BERRicK2(k) = chansim(sRxRicK2, QAM16map, SNR(k), PsRicK2, binDt);
+end
+
+hold on;semilogy(SNR,BERRicK2,'g','linewidth',2);hold off; %BER for Rayleigh signal
+
+%%----------Demodulate Rician signal(w fading,K5)------------------
+for k = 1:length(SNR)
+    clc, fprintf('Processing Rician K5 signal %.1f dB... \n', SNR(k));
+    % evaluate noise spectral power density
+    %PsLos = mean(abs(sLos).^2);
+    BERRicK5(k) = chansim(sRxRicK5, QAM16map, SNR(k), PsRicK5, binDt);
+end
+
+hold on;semilogy(SNR,BERRicK2,'r','linewidth',2);hold off; %BER for Rayleigh signal
+
+
+
+%----------Final formatting of plots------------------------
+xlabel('SNR, dB'); ylabel('BER'); grid on;
+legend('LOS','Rayleigh','Rician K2','Rician K5','location','southwest')
+
+
+%one more picture BER over Eb/N0
+
+EbN0 = SNR - log10(4);
+figure(3)
+semilogy(EbN0,BERLOS,'k','linewidth',2);
+
+hold on;semilogy(EbN0,BERRAY,'b','linewidth',2);hold off; %BER for Rayleigh signal
+
+hold on;semilogy(EbN0,BERRicK2,'g','linewidth',2);hold off; %BER for Rayleigh signal
+
+hold on;semilogy(EbN0,BERRicK5,'r','linewidth',2);hold off; %BER for Rayleigh signal
+
+xlabel('E_b/N_0, dB'); ylabel('BER'); grid on;
+
+legend('LOS','Rayleigh','Rician K2','Rician K5','location','southwest')
+
+
+
+
+
+
+
+
+##%--------------------------------------------------------------------------------------------
+##% Task 4.
+##%-------------------------------------------------------------------------------------------------
+##% Rayleigh channel impulse response
+##hRayRe = [h0Re(end) h1Re(end) h2Re(end)];
+##hRayIm = [h0Im(end) h1Im(end) h2Im(end)];
+##
+##% Ratleigh channel frequency response
+##HRayRe = freqz(hRayRe);
+##HRayIm = freqz(hRayIm);
+##
+##figure(2)
+##subplot(2,2,1), stem(0:2,hRayRe,'r'),grid on; ylabel('IR real part')
+##subplot(2,2,3), plot(abs(HRayRe),'b'), grid on; ylabel('AFR real part')
+##subplot(2,2,2), stem(0:2,hRayIm,'r'),grid on; ylabel('IR imag part')
+##subplot(2,2,4), plot(abs(HRayIm),'b'), grid on; ylabel('AFR imag part')
+##titleStr = sprintf('Rician channel simulation, K = %d', K);
+##axes('title',titleStr,'visible','off');
+##
+##%-------------------------------------------------------------------------------
+##% Rician channel impulse response, K =2
+##K=2;
+##hRicReK2 = [sqrt(K/(K+1))*h0Re(end) sqrt(1/(K+1))*h1Re(end) sqrt(1/(K+1))*h2Re(end)];
+##hRicImK2 = [sqrt(K/(K+1))*h0Im(end) sqrt(1/(K+1))*h1Im(end) sqrt(1/(K+1))*h2Im(end)];
+##
+##
+##% Rician channel frequency response
+##HRicReK2 = freqz(hRicReK2);
+##HRicImK2 = freqz(hRicImK2);
+##
+##figure(3)
+##subplot(2,2,1), stem(0:2,hRicReK2,'r'),grid on; ylabel('IR real part')
+##subplot(2,2,3), plot(abs(HRicReK2),'b'), grid on; ylabel('AFR real part')
+##subplot(2,2,2), stem(0:2,hRicImK2,'r'),grid on; ylabel('IR imag part')
+##subplot(2,2,4), plot(abs(HRicImK2),'b'), grid on; ylabel('AFR imag part')
+##axes('title','IR and AFR for Rician channel model','visible','off');
+##
+##
+##%-------------------------------------------------------------------------------
+##% Rician channel impulse response, K =5
+##K = 5;
+##hRicReK5 = [sqrt(K/(K+1))*h0Re(end) sqrt(1/(K+1))*h1Re(end) sqrt(1/(K+1))*h2Re(end)];
+##hRicImK5 = [sqrt(K/(K+1))*h0Im(end) sqrt(1/(K+1))*h1Im(end) sqrt(1/(K+1))*h2Im(end)];
+##
+##
+##% Rician channel frequency response
+##HRicReK5 = freqz(hRicReK5);
+##HRicImK5 = freqz(hRicImK5);
+##
+##figure(3)
+##subplot(2,2,1), stem(0:2,hRicReK5,'r'),grid on; ylabel('IR real part')
+##subplot(2,2,3), plot(abs(HRicReK5),'b'), grid on; ylabel('AFR real part')
+##subplot(2,2,2), stem(0:2,hRicImK5,'r'),grid on; ylabel('IR imag part')
+##subplot(2,2,4), plot(abs(HRicImK5),'b'), grid on; ylabel('AFR imag part')
+##axes('title','IR and AFR for Rician channel model','visible','off');
