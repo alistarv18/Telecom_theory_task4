@@ -1,0 +1,15 @@
+function BER = chansim(sChan, QAM16map,SNR, Ps, binDt)
+    N = length(sChan);
+    EbN0 = 10^(SNR/10);
+    N0 = Ps/EbN0;
+
+    % add noise to received signal
+    sNoi = sqrt(N0/2)*(randn(1,N)+1i*randn(1,N));
+    sRx = sChan+sNoi;
+
+    % Perform demodulation of qam 16
+
+    binRcv = QAM16demod(sRx,QAM16map);
+
+    %count number of binary errors
+    BER = sum(binRcv ~= binDt)/(4*N);
