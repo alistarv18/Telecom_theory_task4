@@ -1,0 +1,15 @@
+function binRcv = QAM16demod(sRx,QAM16map)
+N = length(sRx);
+dtRxMtx = repmat(sRx(:),1,16);
+QAM16mapMtx = repmat(QAM16map(:).',N,1);
+
+% find the matrix of the distances from received to qam 16 positions
+DstMtx = abs(QAM16mapMtx-dtRxMtx);
+
+% read minimum distances
+[~, minIdx] = min(DstMtx,[],2);
+dtRcv = QAM16map(minIdx);
+
+%read binary data from received symbols
+binRcv = (dec2bin(minIdx-1)=='1')';
+binRcv = binRcv(:)';
